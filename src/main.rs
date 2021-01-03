@@ -24,7 +24,7 @@ fn get_remote_addr(req: &LambdaRequest) -> SocketAddr {
             identity
                 .source_ip
                 .parse()
-                .unwrap_or(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))),
+                .unwrap_or_else(|_| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))),
             8080,
         ),
         RequestContext::ApiGatewayV2(ApiGatewayV2RequestContext {
@@ -33,7 +33,7 @@ fn get_remote_addr(req: &LambdaRequest) -> SocketAddr {
         }) => SocketAddr::new(
             source_ip
                 .parse()
-                .unwrap_or(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))),
+                .unwrap_or_else(|_| IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))),
             8080,
         ),
         _ => SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 8080),
