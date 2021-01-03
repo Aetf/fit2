@@ -3,6 +3,11 @@ name = "fit2"
 version = "0.1.0"
 edition = "2018"
 
+authors = ["Aetf <aetf@unlimited-code.works>"]
+homepage = "https://github.com/Aetf/fit2"
+repository = "https://github.com/Aetf/fit2"
+license = "MIT OR Apache-2.0"
+
 [dependencies]
 tokio = { version = "0.2", features = ["macros"] }
 lambda_http = { git = "https://github.com/awslabs/aws-lambda-rust-runtime/", branch = "master" }
