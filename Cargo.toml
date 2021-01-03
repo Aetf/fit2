@@ -1,0 +1,22 @@
+[package]
+name = "fit2"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+tokio = { version = "0.2", features = ["macros"] }
+lambda_http = { git = "https://github.com/awslabs/aws-lambda-rust-runtime/", branch = "master" }
+serde_json = "1.0"
+routerify = { git = "https://github.com/Aetf/routerify", branch="master" }
+futures = "0.3"
+hyper = "0.13"
+anyhow = "1.0"
+thiserror = "1.0"
+simple_logger = "1.11"
+log = "0.4"
+
+[dependencies.lambda]
+git = "https://github.com/awslabs/aws-lambda-rust-runtime/"
+branch = "master"
+default-features = false
+features = ["simulated"]

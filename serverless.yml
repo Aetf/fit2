@@ -1,0 +1,47 @@
+# For full config options, check the docs:
+#    docs.serverless.com
+service: fit2
+provider:
+  name: aws
+  runtime: rust
+  memorySize: 256
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  endpointType: REGIONAL
+
+# you can add statements to the Lambda function's IAM Role here
+#  iamRoleStatements:
+#    - Effect: "Allow"
+#      Action:
+#        - "s3:ListBucket"
+#      Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket" } ] ]  }
+#    - Effect: "Allow"
+#      Action:
+#        - "s3:PutObject"
+#      Resource:
+#        Fn::Join:
+#          - ""
+#          - - "arn:aws:s3:::"
+#            - "Ref" : "ServerlessDeploymentBucket"
+#            - "/*"
+
+# you can define service wide environment variables here
+#  environment:
+#    variable1: value1
+
+functions:
+  fit2:
+    handler: fit2
+    events:
+      - http:
+          path: /
+          method: get
+      - http:
+          path: users/{userId}
+          method: get
+
+package:
+  individually: true
+
+plugins:
+  - serverless-rust
