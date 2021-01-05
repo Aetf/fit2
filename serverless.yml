@@ -1,6 +1,7 @@
 # For full config options, check the docs:
 #    docs.serverless.com
 service: fit2
+useDotenv: true
 provider:
   name: aws
   runtime: rust
@@ -25,10 +26,10 @@ provider:
             - Arn
   environment:
     USERS_TABLE_NAME: ${self:custom.tableName}
-    GOOGLE_CLIENT_ID: ""
-    GOOGLE_CLIENT_SECRET: ""
-    FITBIT_CLIENT_ID: ""
-    FITBIT_CLIENT_SECRET: ""
+    GOOGLE_CLIENT_ID: ${env:GOOGLE_CLIENT_ID}
+    GOOGLE_CLIENT_SECRET: ${env:GOOGLE_CLIENT_SECRET}
+    FITBIT_CLIENT_ID: ${env:FITBIT_CLIENT_ID}
+    FITBIT_CLIENT_SECRET: ${env:FITBIT_CLIENT_SECRET}
 
 resources:
   Resources:
