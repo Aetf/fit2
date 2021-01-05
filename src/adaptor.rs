@@ -32,9 +32,14 @@ impl IntoHyperBody for LambdaBody {
     }
 }
 
+#[derive(Debug)]
 pub struct WrapperBody(Option<LambdaBody>);
 
 impl WrapperBody {
+    pub fn empty() -> WrapperBody {
+        Self(None)
+    }
+
     pub fn from<T: Into<LambdaBody>>(data: T) -> WrapperBody {
         Self(Some(data.into()))
     }

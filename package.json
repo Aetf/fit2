@@ -1,6 +1,6 @@
 {
   "devDependencies": {
-    "serverless": "^1.74.1",
+    "serverless": "^2.17.0",
     "serverless-rust": "^0.3.8"
   },
   "name": "fit2"

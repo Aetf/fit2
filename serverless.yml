@@ -4,34 +4,58 @@ service: fit2
 provider:
   name: aws
   runtime: rust
-  memorySize: 256
+  memorySize: 128
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
   endpointType: REGIONAL
+  versionFunctions: false
+  apiGateway:
+    shouldStartNameWithService: true
 
-# you can add statements to the Lambda function's IAM Role here
-#  iamRoleStatements:
-#    - Effect: "Allow"
-#      Action:
-#        - "s3:ListBucket"
-#      Resource: { "Fn::Join" : ["", ["arn:aws:s3:::", { "Ref" : "ServerlessDeploymentBucket" } ] ]  }
-#    - Effect: "Allow"
-#      Action:
-#        - "s3:PutObject"
-#      Resource:
-#        Fn::Join:
-#          - ""
-#          - - "arn:aws:s3:::"
-#            - "Ref" : "ServerlessDeploymentBucket"
-#            - "/*"
+  # IAM role for the function itself
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - "dynamoDb:GetItem"
+        - "dynamoDb:PutItem"
+        - "dynamoDb:Scan"
+      Resource:
+        - 'Fn::GetAtt':
+            - UsersTable
+            - Arn
+  environment:
+    USERS_TABLE_NAME: ${self:custom.tableName}
+    GOOGLE_CLIENT_ID: ""
+    GOOGLE_CLIENT_SECRET: ""
+    FITBIT_CLIENT_ID: ""
+    FITBIT_CLIENT_SECRET: ""
 
-# you can define service wide environment variables here
-#  environment:
-#    variable1: value1
+resources:
+  Resources:
+    UsersTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableName}
+        AttributeDefinitions:
+          - AttributeName: uid
+            AttributeType: S
+        KeySchema:
+          - AttributeName: uid
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        Tags:
+          - Key: app
+            Value: fit2
+
+custom:
+  tableName: ${self:service}-${opt:stage, 'dev'}-UsersTable
+
+package:
+  individually: true
 
 functions:
   fit2:
-    handler: fit2
+    handler: fit2.lambda
     events:
       - http:
           path: /
@@ -39,9 +63,9 @@ functions:
       - http:
           path: users/{userId}
           method: get
-
-package:
-  individually: true
+      - http:
+          path: users/{userId}
+          method: post
 
 plugins:
   - serverless-rust
