@@ -16,9 +16,14 @@ pub trait IntoResp {
     fn into_resp(self) -> Response;
 }
 
+pub trait RequestExt {
+    fn base_path(&self) -> &str;
+}
+
 pub mod prelude {
     pub use super::IntoHyperBody as _;
-    pub use super::IntoResp as _;
+    pub use super::IntoResp;
+    pub use super::RequestExt as _;
     pub use hyper::body::HttpBody as _;
 }
 

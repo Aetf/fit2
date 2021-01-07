@@ -1,5 +1,5 @@
-use fit2::{init, lambda_http_handler, error::*};
-use lambda_http::{lambda, handler};
+use fit2::{error::*, init, lambda_http_handler};
+use lambda_http::{handler, lambda};
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -19,6 +19,7 @@ provider:
       Action:
         - "dynamoDb:GetItem"
         - "dynamoDb:PutItem"
+        - "dynamoDb:UpdateItem"
         - "dynamoDb:Scan"
       Resource:
         - 'Fn::GetAtt':
@@ -30,6 +31,7 @@ provider:
     GOOGLE_CLIENT_SECRET: ${env:GOOGLE_CLIENT_SECRET}
     FITBIT_CLIENT_ID: ${env:FITBIT_CLIENT_ID}
     FITBIT_CLIENT_SECRET: ${env:FITBIT_CLIENT_SECRET}
+    FITBIT_SUBSCRIBER_VERIFY: ${env:FITBIT_SUBSCRIBER_VERIFY}
 
 resources:
   Resources:
@@ -59,14 +61,26 @@ functions:
     handler: fit2.lambda
     events:
       - http:
-          path: /
+          path: /setup
           method: get
       - http:
-          path: users/{userId}
+          path: /api/auth/fitbit
           method: get
       - http:
-          path: users/{userId}
+          path: /api/auth/google
+          method: get
+      - http:
+          path: /api/auth/fitbit/callback
+          method: get
+      - http:
+          path: /api/auth/google/callback
+          method: get
+      - http:
+          path: /api/fitbit/notification
           method: post
+      - http:
+          path: /api/fitbit/notification
+          method: get
 
 plugins:
   - serverless-rust

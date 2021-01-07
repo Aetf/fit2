@@ -1,6 +1,6 @@
-use thiserror::Error;
 pub use anyhow::anyhow;
 pub use anyhow::Context as _;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {

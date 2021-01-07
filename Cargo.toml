@@ -28,6 +28,18 @@ rusoto_dynamodb = {version = "0.45.0", default_features = false, features=["rust
 envy = "0.4"
 serde = "1.0"
 dynomite = { version = "0.10", default_features = false, features=["rustls", "derive"]}
+askama = "0.10"
+url = "2.2.0"
+
+[dependencies.reqwest]
+version = "0.10"
+default-features = false
+features = ["rustls-tls", "json"]
+
+[dependencies.oauth2]
+version = "3.0"
+default-features = false
+features = ["futures-03", "reqwest-010"]
 
 [dependencies.lambda]
 git = "https://github.com/awslabs/aws-lambda-rust-runtime/"

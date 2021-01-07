@@ -1,6 +1,6 @@
-use fit2::{init, router, error::*};
-use routerify::RouterService;
+use fit2::{error::*, init, router};
 use hyper::Server;
+use routerify::RouterService;
 use std::net::SocketAddr;
 
 #[tokio::main]
