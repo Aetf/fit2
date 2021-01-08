@@ -1,7 +1,5 @@
 pub use askama::Template;
 
-use crate::core::db::User;
-
 #[derive(Template, Debug)]
 #[template(path = "setup.jinja.html")]
 pub struct SetupPage {

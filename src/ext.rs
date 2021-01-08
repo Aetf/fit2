@@ -1,6 +1,3 @@
-use hyper::body::HttpBody;
-use url::form_urlencoded;
-use routerify::Middleware;
 use lambda_http::{Request as LambdaRequest, RequestExt as _, StrMap};
 
 use crate::adaptor::Request;

@@ -1,32 +1,19 @@
 // Import the routerify prelude traits.
-use oauth2::url::Url;
 use routerify::prelude::*;
 use routerify::{Middleware, RequestInfo, Router};
 
 use crate::adaptor::{http, prelude::*, Body, Request, Response};
-use crate::core::{db::User, Fit2};
+use crate::core::Fit2;
 use crate::error::*;
 use crate::ext::prelude::*;
 
 mod templates;
 use templates::{SetupPage, Template};
 
-// Define an app state to share it across the route handlers and middlewares.
-struct State(u64);
-
-// A handler for "/" page.
-async fn home_handler(req: Request) -> Result<Response> {
-    // Access the app state.
-    let state = req.data::<State>().unwrap();
-    log::info!("State value: {}", state.0);
-
-    Ok("Home page".into_resp())
-}
-
 async fn setup_page(req: Request) -> Result<Response> {
     let client = Fit2::from_env()?;
     let html = SetupPage {
-        valid_fitbit: client.ensure_fitbit_token().await.is_ok(),
+        valid_fitbit: client.fitbit_ensure_setup().await.is_ok(),
         valid_google: client.ensure_google_token().await.is_ok(),
         base_path: req.base_path().to_owned(),
     }
@@ -40,10 +27,10 @@ async fn setup_page(req: Request) -> Result<Response> {
 
 async fn connect_fitbit(req: Request) -> Result<Response> {
     let client = Fit2::from_env()?;
-    let url = if let Ok(_) = client.ensure_fitbit_token().await {
+    let url = if let Ok(_) = client.fitbit_ensure_setup().await {
         format!("{}/setup", req.base_path())
     } else {
-        client.fitbit_oauth_redirect().await?.to_string()
+        client.fitbit_oauth_start().await?.to_string()
     };
     // redirect to fitbit authorize page
     Ok(http::Response::builder()
@@ -72,7 +59,7 @@ async fn oauth_callback_fitbit(req: Request) -> Result<Response> {
         .query("state")
         .ok_or_else(|| anyhow!("expected state"))?;
     let code = req.query("code").ok_or_else(|| anyhow!("expected code"))?;
-    client.fitbit_oauth_token(csrf, code).await?;
+    client.fitbit_oauth_exchange_token(csrf, code).await?;
 
     let url = format!("{}/setup", req.base_path());
 
@@ -88,42 +75,13 @@ async fn fitbit_sub_verify(req: Request) -> Result<Response> {
         Ok(_) => http::StatusCode::NO_CONTENT,
         Err(_) => http::StatusCode::NOT_FOUND,
     };
-    Ok(http::Response::builder()
-        .status(code)
-        .body(Body::empty())?)
+    Ok(http::Response::builder().status(code).body(Body::empty())?)
 }
 
-async fn fitbit_sub_notify(req: Request) -> Result<Response> {
+async fn fitbit_sub_notify(_req: Request) -> Result<Response> {
     log::warn!("Stub sub notify");
     Ok(http::Response::builder()
         .status(http::StatusCode::NO_CONTENT)
-        .body(Body::empty())?)
-}
-
-// A handler for "/users/:userId" page.
-async fn user_handler(req: Request) -> Result<Response> {
-    let client = Fit2::from_env()?;
-    let user_id = req
-        .param("userId")
-        .ok_or_else(|| anyhow!("expected userId"))?;
-    match client.get_user().await? {
-        Some(user) => Ok(format!("Hello {:?}", &user).into_resp()),
-        None => Ok(http::Response::builder()
-            .status(http::StatusCode::NOT_FOUND)
-            .body(Body::empty())?),
-    }
-}
-
-async fn create_user(req: Request) -> Result<Response> {
-    let client = Fit2::from_env()?;
-    let user_id = req
-        .param("userId")
-        .ok_or_else(|| anyhow!("expected userId"))?;
-    let user = User::new(user_id);
-    client.put_user(&user).await?;
-
-    Ok(http::Response::builder()
-        .status(http::StatusCode::CREATED)
         .body(Body::empty())?)
 }
 
@@ -173,9 +131,6 @@ pub fn router() -> Router<Body, Error> {
     // Here, "Middleware::pre" means we're adding a pre middleware which will be executed
     // before any route handlers.
     Router::builder()
-        // Specify the state data which will be available to every route handlers,
-        // error handler and middlewares.
-        .data(State(100))
         .middleware(Middleware::pre(logger))
         .get("/setup", setup_page)
         .get("/api/auth/fitbit", connect_fitbit)

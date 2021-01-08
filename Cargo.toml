@@ -30,6 +30,7 @@ serde = "1.0"
 dynomite = { version = "0.10", default_features = false, features=["rustls", "derive"]}
 askama = "0.10"
 url = "2.2.0"
+http = "0.2"
 
 [dependencies.reqwest]
 version = "0.10"

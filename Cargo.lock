@@ -535,6 +535,7 @@ dependencies = [
  "dynomite",
  "envy",
  "futures",
+ "http 0.2.1",
  "hyper",
  "lambda",
  "lambda_http",

@@ -10,16 +10,16 @@ use simple_logger::SimpleLogger;
 use std::net::{Ipv4Addr, SocketAddr};
 
 mod adaptor;
-mod ext;
 mod core;
 pub mod error;
+mod ext;
 mod route;
 
 use adaptor::prelude::*;
 use error::*;
 
-pub use route::router;
 use crate::ext::Query;
+pub use route::router;
 
 pub async fn init() -> Result<()> {
     // one time init
@@ -92,25 +92,20 @@ struct ApiGatewayPath {
 impl ApiGatewayPath {
     pub fn from_req(req: &LambdaRequest) -> Self {
         let base_path = match req.request_context() {
-            RequestContext::ApiGatewayV2(ApiGatewayV2RequestContext {
-                stage,
-                http,
-                ..
-                                         }) => {
+            RequestContext::ApiGatewayV2(ApiGatewayV2RequestContext { stage, http, .. }) => {
                 if is_default_api_gateway_url(req) {
                     format!("/{}", stage)
                 } else {
                     let full_path = req.uri().path();
-                    let resource_path_index =
-                        full_path.rfind(&http.path).unwrap_or_else(|| {
-                            panic!(
-                                "Could not find segment '{}' in path '{}'.",
-                                &http.path, full_path
-                            )
-                        });
+                    let resource_path_index = full_path.rfind(&http.path).unwrap_or_else(|| {
+                        panic!(
+                            "Could not find segment '{}' in path '{}'.",
+                            &http.path, full_path
+                        )
+                    });
                     full_path[..resource_path_index].to_owned()
                 }
-            },
+            }
             RequestContext::ApiGateway(ApiGatewayRequestContext {
                 stage,
                 resource_path,
@@ -133,9 +128,7 @@ impl ApiGatewayPath {
             }
             RequestContext::Alb { .. } => String::new(),
         };
-        Self{
-            base_path,
-        }
+        Self { base_path }
     }
 }
 

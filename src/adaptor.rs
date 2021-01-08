@@ -1,6 +1,6 @@
 use futures::task::{Context, Poll};
+pub use http;
 use hyper::{body::Bytes, http::HeaderValue, HeaderMap};
-pub use lambda_http::http;
 use lambda_http::Body as LambdaBody;
 use std::convert::Infallible;
 use tokio::macros::support::Pin;
