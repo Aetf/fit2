@@ -1,7 +1,6 @@
 // Import the routerify prelude traits.
 use routerify::prelude::*;
 use routerify::{Middleware, RequestInfo, Router};
-use std::borrow::Cow;
 use hyper::body::to_bytes;
 
 use crate::adaptor::{http, prelude::*, Body, Request, Response};

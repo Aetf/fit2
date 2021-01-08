@@ -34,6 +34,7 @@ http = "0.2"
 hmac = { version = "0.10", features=["std"] }
 sha-1 = "0.9"
 percent-encoding = "2.1"
+base64 = "0.13"
 
 [dependencies.reqwest]
 version = "0.10"

@@ -31,14 +31,17 @@ impl Fit2 {
 
         // decode the signature
         let sig: Cow<[u8]> = percent_decode(sig).into();
+        let sig = base64::decode(&sig).context("base64 decode signature")?;
+        log::debug!("Signature to verify: {:?}", &sig);
 
         // compute signature on body
         let key = self.config.fitbit_client_secret.clone() + "&";
         let key = key.as_bytes();
+        log::debug!("Using key {:?}", &key);
         let mut mac = HmacSha1::new_varkey(key).expect("HMAC can take any key size");
         mac.update(body);
         // verify
-        mac.verify(sig.as_ref()).context("invalid fitbit signature")?;
+        mac.verify(&sig).context("invalid fitbit signature")?;
         Ok(())
     }
 

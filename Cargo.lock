@@ -542,6 +542,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "askama",
+ "base64 0.13.0",
  "dynomite",
  "envy",
  "futures",
