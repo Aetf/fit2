@@ -1,6 +1,8 @@
 // Import the routerify prelude traits.
 use routerify::prelude::*;
 use routerify::{Middleware, RequestInfo, Router};
+use std::borrow::Cow;
+use hyper::body::to_bytes;
 
 use crate::adaptor::{http, prelude::*, Body, Request, Response};
 use crate::core::Fit2;
@@ -81,10 +83,21 @@ async fn fitbit_sub_verify(req: Request) -> Result<Response> {
     Ok(http::Response::builder().status(code).body(Body::empty())?)
 }
 
-async fn fitbit_sub_notify(_req: Request) -> Result<Response> {
-    log::warn!("Stub sub notify");
+async fn fitbit_sub_notify(req: Request) -> Result<Response> {
+    let fit2 = Fit2::from_env()?;
+
+    let sig = req.headers().get("x-fitbit-signature").map(|v| v.as_bytes().to_owned()).unwrap_or_default();
+    let body = to_bytes(req.into_body()).await.context("read fitbit notification")?;
+
+    let status = match fit2.fitbit_verify_body(sig, &body).await {
+        Err(_) => http::StatusCode::NOT_FOUND,
+        Ok(_) => {
+            fit2.fitbit_process_notification(body).await?;
+            http::StatusCode::NO_CONTENT
+        }
+    };
     Ok(http::Response::builder()
-        .status(http::StatusCode::NO_CONTENT)
+        .status(status)
         .body(Body::empty())?)
 }
 

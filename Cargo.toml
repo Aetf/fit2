@@ -31,6 +31,9 @@ dynomite = { version = "0.10", default_features = false, features=["rustls", "de
 askama = "0.10"
 url = "2.2.0"
 http = "0.2"
+hmac = { version = "0.10", features=["std"] }
+sha-1 = "0.9"
+percent-encoding = "2.1"
 
 [dependencies.reqwest]
 version = "0.10"

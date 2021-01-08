@@ -6,9 +6,13 @@ use oauth2::{
 };
 use rusoto_dynamodb::{DynamoDb, UpdateItemInput};
 use url::Url;
+use sha1::Sha1;
+use hmac::{Hmac, Mac, NewMac};
+use percent_encoding::percent_decode;
 
 use crate::core::{db::User, Fit2};
 use crate::error::*;
+use std::borrow::Cow;
 
 #[derive(Debug)]
 enum FitbitState {
@@ -17,7 +21,35 @@ enum FitbitState {
     Ok,
 }
 
+type HmacSha1 = Hmac<Sha1>;
+
 impl Fit2 {
+    // verify the body against signature
+    pub(crate) async fn fitbit_verify_body(&self, sig: impl AsRef<[u8]>, body: impl AsRef<[u8]>) -> Result<()> {
+        let sig = sig.as_ref();
+        let body = body.as_ref();
+
+        // decode the signature
+        let sig: Cow<[u8]> = percent_decode(sig).into();
+
+        // compute signature on body
+        let key = self.config.fitbit_client_secret.clone() + "&";
+        let key = key.as_bytes();
+        let mut mac = HmacSha1::new_varkey(key).expect("HMAC can take any key size");
+        mac.update(body);
+        // verify
+        mac.verify(sig.as_ref()).context("invalid fitbit signature")?;
+        Ok(())
+    }
+
+    pub(crate) async fn fitbit_process_notification(&self, body: impl AsRef<[u8]>) -> Result<()> {
+        let body: serde_json::Value = serde_json::from_slice(body.as_ref())
+            .context("deserialize fitbit notification")?;
+        log::debug!("Got fitbit notification {:?}", body);
+
+        Ok(())
+    }
+
     pub(crate) async fn fitbit_oauth_start(&self) -> Result<Url> {
 
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
