@@ -60,6 +60,7 @@ impl Fit2 {
             .set_pkce_challenge(pkce_challenge)
             // Set the desired scopes.
             .add_scope(Scope::new("weight".to_string()))
+            .add_scope(Scope::new("profile".to_string()))
             .url();
 
         let mut user = self.ensure_user().await?;
