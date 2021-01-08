@@ -14,7 +14,7 @@ async fn setup_page(req: Request) -> Result<Response> {
     let client = Fit2::from_env()?;
     let html = SetupPage {
         valid_fitbit: client.fitbit_ensure_setup().await.is_ok(),
-        valid_google: client.ensure_google_token().await.is_ok(),
+        valid_google: client.google_ensure_setup().await.is_ok(),
         base_path: req.base_path().to_owned(),
     }
     .render()
@@ -41,7 +41,7 @@ async fn connect_fitbit(req: Request) -> Result<Response> {
 
 async fn connect_google(req: Request) -> Result<Response> {
     let client = Fit2::from_env()?;
-    let url = if let Ok(_) = client.ensure_google_token().await {
+    let url = if let Ok(_) = client.google_ensure_setup().await {
         format!("{}/setup", req.base_path())
     } else {
         client.google_oauth_redirect().await?.to_string()
@@ -55,11 +55,14 @@ async fn connect_google(req: Request) -> Result<Response> {
 
 async fn oauth_callback_fitbit(req: Request) -> Result<Response> {
     let client = Fit2::from_env()?;
+
     let csrf = req
-        .query("state")
-        .ok_or_else(|| anyhow!("expected state"))?;
-    let code = req.query("code").ok_or_else(|| anyhow!("expected code"))?;
-    client.fitbit_oauth_exchange_token(csrf, code).await?;
+        .query("state");
+    let code = req.query("code");
+    if let(Some(csrf), Some(code)) = (csrf, code) {
+        client.fitbit_oauth_exchange_token(csrf, code).await?;
+    }
+    client.fitbit_ensure_setup().await?;
 
     let url = format!("{}/setup", req.base_path());
 

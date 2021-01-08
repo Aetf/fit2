@@ -23,6 +23,8 @@ pub use route::router;
 
 pub async fn init() -> Result<()> {
     // one time init
+    std::env::set_var("RUST_BACKTRACE", "1");
+
     SimpleLogger::from_env()
         .with_level(log::LevelFilter::Off)
         .with_module_level("fit2", log::LevelFilter::Debug)

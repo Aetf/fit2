@@ -59,6 +59,8 @@ package:
 functions:
   fit2:
     handler: fit2.lambda
+    rust:
+      cargoFlags: '--bin lambda'
     events:
       - http:
           path: /setup

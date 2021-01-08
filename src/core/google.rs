@@ -7,8 +7,8 @@ impl Fit2 {
         todo!()
     }
 
-    pub(crate) async fn ensure_google_token(&self) -> Result<User> {
-        todo!()
+    pub(crate) async fn google_ensure_setup(&self) -> Result<()> {
+        Err(Error::from(anyhow!("google not validated")))
     }
 }
 
