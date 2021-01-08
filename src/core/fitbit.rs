@@ -10,6 +10,7 @@ use url::Url;
 use crate::core::{db::User, Fit2};
 use crate::error::*;
 
+#[derive(Debug)]
 enum FitbitState {
     NoAuth,
     AuthNoSub,
@@ -18,6 +19,7 @@ enum FitbitState {
 
 impl Fit2 {
     pub(crate) async fn fitbit_oauth_start(&self) -> Result<Url> {
+
         let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
         // Generate the full authorization URL.
         let (auth_url, csrf_token) = self
@@ -33,6 +35,8 @@ impl Fit2 {
         user.fitbit_oauth_pkce = Some(pkce_verifier.secret().clone());
         user.set_oauth_state(self).await?;
 
+        log::info!("Starting oauth: {}", &auth_url);
+
         Ok(auth_url)
     }
 
@@ -43,6 +47,8 @@ impl Fit2 {
     ) -> Result<()> {
         let csrf = csrf.as_ref();
         let code = code.into();
+
+        log::info!("Exchanging oauth token");
 
         // check csrf
         let mut user = self.ensure_user().await?;
@@ -84,7 +90,9 @@ impl Fit2 {
     pub(crate) async fn fitbit_ensure_setup(&self) -> Result<()> {
         let mut user = self.ensure_user().await?;
         loop {
-            match user.validate_fitbit().await? {
+            let s = user.validate_fitbit().await?;
+            log::debug!("Fitbit state: {:?}", s);
+            match s {
                 FitbitState::NoAuth => {
                     // do auth refresh
                     user.refresh_oauth_token(self).await?;
@@ -103,6 +111,7 @@ impl Fit2 {
 
     pub(crate) async fn fitbit_sub_verify(&self, verify: Option<impl AsRef<str>>) -> Result<()> {
         let verify = verify.as_ref().map(|s| s.as_ref());
+        log::info!("Verifying subscription endpoint with code: {:?}", &verify);
         if verify == Some(&self.config.fitbit_subscriber_verify) {
             Ok(())
         } else {
@@ -115,6 +124,7 @@ impl User {
     // verify that fitbit oauth access token is working
     // and subscription is setup
     async fn validate_fitbit(&self) -> Result<FitbitState> {
+        log::debug!("Validating subscription");
         let resp = match reqwest::Client::new()
             .get("https://api.fitbit.com/1/user/-/body/apiSubscriptions.json")
             .bearer_auth(&self.fitbit_access_token)
@@ -151,6 +161,7 @@ impl User {
     }
 
     async fn set_oauth_state(&mut self, fit2: &Fit2) -> Result<()> {
+        log::debug!("Setting oauth state in DB");
         let input = UpdateItemInput {
             key: self.key(),
             return_values: Some("ALL_NEW".to_owned()),
@@ -175,6 +186,7 @@ impl User {
     }
 
     async fn set_oauth_token(&mut self, token: String, refresh: String, fit2: &Fit2) -> Result<()> {
+        log::info!("Setting oauth token in DB");
         let input = UpdateItemInput {
             key: self.key(),
             return_values: Some("ALL_NEW".to_owned()),
@@ -197,6 +209,7 @@ impl User {
     }
 
     async fn refresh_oauth_token(&mut self, fit2: &Fit2) -> Result<()> {
+        log::info!("Refreshing oauth token");
         let token = fit2
             .fitbit_oauth
             .exchange_refresh_token(&RefreshToken::new(self.fitbit_refresh_token.clone()))
@@ -214,6 +227,7 @@ impl User {
     }
 
     async fn setup_subscription(&self) -> Result<()> {
+        log::debug!("Removing old subscription");
         let client = reqwest::Client::new();
         client
             .delete(&format!(
@@ -224,12 +238,14 @@ impl User {
             .send()
             .await
             .context("fitbit delete subscribe")?;
+        log::info!("Adding new subscription");
         client
             .post(&format!(
                 "https://api.fitbit.com/1/user/-/body/apiSubscriptions/{}.json",
                 &self.uid
             ))
             .bearer_auth(&self.fitbit_access_token)
+            .form(&[("subscriberId", "1")])
             .send()
             .await
             .context("fitbit subscribe")?
