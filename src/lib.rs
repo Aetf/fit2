@@ -1,3 +1,5 @@
+#![feature(bound_cloned)]
+
 use futures::future::poll_fn;
 use lambda_http::{
     request::{ApiGatewayRequestContext, ApiGatewayV2RequestContext, Http, RequestContext},
@@ -14,6 +16,7 @@ mod core;
 pub mod error;
 mod ext;
 mod route;
+mod utils;
 
 use adaptor::prelude::*;
 use error::*;

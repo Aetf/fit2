@@ -8,22 +8,31 @@ use serde::Deserialize;
 
 use crate::error::*;
 use db::User;
+use chrono::{Utc, DateTime};
 
 pub(crate) mod db {
     use dynomite::Item;
+    use chrono::{DateTime, Utc, Date};
 
     #[derive(Clone, Debug, Default, Item)]
     pub(crate) struct User {
         #[dynomite(partition_key)]
         pub uid: String,
+
         pub fitbit_access_token: String,
         pub fitbit_refresh_token: String,
+
         #[dynomite(default)]
         pub fitbit_oauth_csrf: Option<String>,
         #[dynomite(default)]
         pub fitbit_oauth_pkce: Option<String>,
+
+        #[dynomite(default)]
+        pub fitbit_member_since: Option<DateTime<Utc>>,
+
         pub google_access_token: String,
         pub google_refresh_token: String,
+
         #[dynomite(default)]
         pub google_oauth_csrf: Option<String>,
         #[dynomite(default)]
@@ -107,6 +116,19 @@ impl Fit2 {
             .await
             .context("failed to put_user")?;
         Ok(())
+    }
+
+    async fn last_sync(&self) -> Result<DateTime<Utc>> {
+        // max(google_max_sync, fitbit_member_since) if google_max_sync is Some(_)
+        // else fitbit_member_since
+        todo!("determine last sync time")
+    }
+
+    pub(crate) async fn sync_fitbit_to_google(&self) -> Result<()> {
+        let begin = self.last_sync().await?;
+        let points = self.fitbit_get_data_points(begin, Utc::now()).await?;
+
+        todo!("convert points to google format and call google API to insert")
     }
 }
 
