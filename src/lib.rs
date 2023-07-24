@@ -1,4 +1,5 @@
 #![feature(bound_cloned)]
+#![feature(or_patterns)]
 
 use futures::future::poll_fn;
 use lambda_http::{
@@ -12,6 +13,7 @@ use simple_logger::SimpleLogger;
 use std::net::{Ipv4Addr, SocketAddr};
 
 mod adaptor;
+mod auth;
 mod core;
 pub mod error;
 mod ext;

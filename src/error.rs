@@ -1,6 +1,7 @@
 pub use anyhow::anyhow;
 pub use anyhow::Context as _;
 use thiserror::Error;
+use crate::auth::OAuthRedirect;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -8,6 +9,8 @@ pub enum Error {
     Internal(#[from] anyhow::Error),
     #[error(transparent)]
     Logging(#[from] log::SetLoggerError),
+    #[error("OAuth redirect needed")]
+    AuthRedirect(OAuthRedirect),
 }
 
 impl From<Box<dyn std::error::Error + Send + Sync + 'static>> for Error {
@@ -31,6 +34,12 @@ impl From<hyper::Error> for Error {
 impl From<lambda_http::http::Error> for Error {
     fn from(e: lambda_http::http::Error) -> Self {
         Self::Internal(anyhow!(e))
+    }
+}
+
+impl Error {
+    pub fn oauth_redirect(redirect: OAuthRedirect) -> Error {
+        Error::AuthRedirect(redirect)
     }
 }
 

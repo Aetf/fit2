@@ -1,23 +1,15 @@
-use dynomite::{attr_map, FromAttributes, Item};
-use oauth2::reqwest::async_http_client;
-use oauth2::{AsyncCodeTokenRequest, AsyncRefreshTokenRequest, TokenResponse};
-use oauth2::{
-    AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RefreshToken, Scope,
-};
-use rusoto_dynamodb::{DynamoDb, UpdateItemInput};
-use url::Url;
 use sha1::Sha1;
 use hmac::{Hmac, Mac, NewMac};
 use percent_encoding::percent_decode;
 use fitbit_web_api as fitbit;
 use chrono::{TimeZone, NaiveDate};
 
-use crate::core::{db::User, Fit2};
+use crate::core::{User, Fit2};
 use crate::error::*;
 use std::borrow::Cow;
 use chrono::{DateTime, Utc, Date};
 use crate::utils::{DateRangeChunksExt as _};
-use std::iter::{once, once_with};
+use crate::auth::Authenticator;
 
 #[derive(Debug)]
 enum FitbitState {
@@ -63,7 +55,7 @@ impl Fit2 {
 
     pub(crate) async fn fitbit_member_since(&self) -> Result<Date<Utc>> {
         let mut user = self.ensure_user().await?;
-        if let Some(dt) = user.fitbit_member_since {
+        if let Some(dt) = user.fitbit_member_since() {
             return Ok(dt.date());
         }
 
@@ -74,9 +66,9 @@ impl Fit2 {
             _ => return Err(anyhow!("invalid fitbit profile").into()),
         }
             .with_timezone(&Utc);
-        user.set_member_since(member_since, self).await?;
+        user.db.fitbit_member_since = Some(member_since.and_hms(0, 0, 0));
 
-        Ok(user.fitbit_member_since.unwrap().date())
+        Ok(member_since)
     }
 
     // handles chunking into month long periods and filtering out points based on time on the date of minTime and maxTime
@@ -108,85 +100,18 @@ impl Fit2 {
         Ok(result)
     }
 
-    pub(crate) async fn fitbit_oauth_start(&self) -> Result<Url> {
-
-        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-        // Generate the full authorization URL.
-        let (auth_url, csrf_token) = self
-            .fitbit_oauth
-            .authorize_url(CsrfToken::new_random)
-            .set_pkce_challenge(pkce_challenge)
-            // Set the desired scopes.
-            .add_scope(Scope::new("weight".to_string()))
-            .add_scope(Scope::new("profile".to_string()))
-            .url();
-
-        let mut user = self.ensure_user().await?;
-        user.fitbit_oauth_csrf = Some(csrf_token.secret().clone());
-        user.fitbit_oauth_pkce = Some(pkce_verifier.secret().clone());
-        user.set_oauth_state(self).await?;
-
-        log::info!("Starting oauth: {}", &auth_url);
-
-        Ok(auth_url)
-    }
-
-    pub(crate) async fn fitbit_oauth_exchange_token(
-        &self,
-        csrf: impl AsRef<str>,
-        code: impl Into<String>,
-    ) -> Result<()> {
-        let csrf = csrf.as_ref();
-        let code = code.into();
-
-        log::info!("Exchanging oauth token");
-
-        // check csrf
-        let mut user = self.ensure_user().await?;
-        if user.fitbit_oauth_csrf.as_deref() != Some(csrf) {
-            return Err(anyhow!(
-                "Fitbit csrf mismatch: got {} expected {:?}",
-                csrf,
-                &user.fitbit_oauth_csrf
-            )
-            .into());
-        }
-
-        let pkce_verifier = user
-            .fitbit_oauth_pkce
-            .clone()
-            .ok_or_else(|| anyhow!("Missing Fitbit pkce verifier"))?;
-
-        let token = self
-            .fitbit_oauth
-            .exchange_code(AuthorizationCode::new(code))
-            .set_pkce_verifier(PkceCodeVerifier::new(pkce_verifier))
-            .request_async(async_http_client)
-            .await
-            .map_err(|e| anyhow!(format!("{:?}", e)))?;
-
-        let refresh = token
-            .refresh_token()
-            .ok_or_else(|| anyhow!("Missing Fitbit refresh token"))?
-            .secret()
-            .clone();
-        let token = token.access_token().secret().clone();
-        user.set_oauth_token(token, refresh, self).await?;
-        Ok(())
-    }
-
     // ensure fitbit is fully setup by
     // * refreshing token
     // * setting up subscription
     pub(crate) async fn fitbit_ensure_setup(&self) -> Result<()> {
-        let mut user = self.ensure_user().await?;
+        let user = self.ensure_user().await?;
         loop {
             let s = user.validate_fitbit().await?;
             log::debug!("Fitbit state: {:?}", s);
             match s {
                 FitbitState::NoAuth => {
                     // do auth refresh
-                    user.refresh_oauth_token(self).await?;
+                    user.fitbit_auth().refresh(&["weight", "profile"]).await?;
                 }
                 FitbitState::AuthNoSub => {
                     // do sub
@@ -216,9 +141,10 @@ impl User {
     // and subscription is setup
     async fn validate_fitbit(&self) -> Result<FitbitState> {
         log::debug!("Validating subscription");
+        let token = self.fitbit_auth.token(&["weight"]).await?;
         let resp = match reqwest::Client::new()
             .get("https://api.fitbit.com/1/user/-/body/apiSubscriptions.json")
-            .bearer_auth(&self.fitbit_access_token)
+            .bearer_auth(token.secret())
             .send()
             .await
             .context("fitbit validate get subscriptions list")?
@@ -242,7 +168,7 @@ impl User {
 
         let sub = body["apiSubscriptions"].as_array().and_then(|subs| {
             subs.iter()
-                .find(|sub| sub["subscriptionId"].as_str() == Some(&self.uid))
+                .find(|sub| sub["subscriptionId"].as_str() == Some(self.uid()))
         });
 
         match sub {
@@ -251,103 +177,16 @@ impl User {
         }
     }
 
-    async fn set_oauth_state(&mut self, fit2: &Fit2) -> Result<()> {
-        log::debug!("Setting oauth state in DB");
-        let input = UpdateItemInput {
-            key: self.key(),
-            return_values: Some("ALL_NEW".to_owned()),
-            table_name: fit2.config.users_table_name.clone(),
-            update_expression: Some(
-                "SET fitbit_oauth_csrf = :csrf, fitbit_oauth_pkce = :pkce".to_owned(),
-            ),
-            expression_attribute_values: Some(attr_map! {
-                ":csrf" => self.fitbit_oauth_csrf.take().unwrap_or_default(),
-                ":pkce" => self.fitbit_oauth_pkce.take().unwrap_or_default(),
-            }),
-            ..Default::default()
-        };
-        let output = fit2
-            .db
-            .update_item(input)
-            .await
-            .context("update fitbit oauth state")?;
-        *self = User::from_attrs(output.attributes.unwrap_or_default())
-            .context("update fitbit oauth state")?;
-        Ok(())
-    }
-
-    async fn set_oauth_token(&mut self, token: String, refresh: String, fit2: &Fit2) -> Result<()> {
-        log::info!("Setting oauth token in DB");
-        let input = UpdateItemInput {
-            key: self.key(),
-            return_values: Some("ALL_NEW".to_owned()),
-            table_name: fit2.config.users_table_name.clone(),
-            update_expression: Some("SET fitbit_access_token = :token, fitbit_refresh_token = :refresh REMOVE fitbit_oauth_csrf, fitbit_oauth_pkce".to_owned()),
-            expression_attribute_values: Some(attr_map!{
-                ":token" => token,
-                ":refresh" => refresh,
-            }),
-            .. Default::default()
-        };
-        let output = fit2
-            .db
-            .update_item(input)
-            .await
-            .context("update fitbit oauth token")?;
-        *self = User::from_attrs(output.attributes.unwrap_or_default())
-            .context("update fitbit oauth token")?;
-        Ok(())
-    }
-
-    async fn set_member_since(&mut self, member_since: Date<Utc>, fit2: &Fit2) -> Result<()> {
-        log::debug!("Setting member_since in DB");
-        let input = UpdateItemInput {
-            key: self.key(),
-            return_values: Some("ALL_NEW".to_owned()),
-            table_name: fit2.config.users_table_name.clone(),
-            update_expression: Some("SET fitbit_member_since = :since".to_owned()),
-            expression_attribute_values: Some(attr_map!{
-                ":since" => member_since.and_hms(0, 0, 0),
-            }),
-            .. Default::default()
-        };
-        let output = fit2
-            .db
-            .update_item(input)
-            .await
-            .context("update fitbit member_since")?;
-        *self = User::from_attrs(output.attributes.unwrap_or_default())
-            .context("update fitbit member_since")?;
-        Ok(())
-    }
-
-    async fn refresh_oauth_token(&mut self, fit2: &Fit2) -> Result<()> {
-        log::info!("Refreshing oauth token");
-        let token = fit2
-            .fitbit_oauth
-            .exchange_refresh_token(&RefreshToken::new(self.fitbit_refresh_token.clone()))
-            .request_async(async_http_client)
-            .await
-            .map_err(|e| anyhow!(format!("{:?}", e)))?;
-        let refresh = token
-            .refresh_token()
-            .ok_or_else(|| anyhow!("Missing Fitbit refresh token"))?
-            .secret()
-            .clone();
-        let token = token.access_token().secret().clone();
-        self.set_oauth_token(token, refresh, fit2).await?;
-        Ok(())
-    }
-
     async fn setup_subscription(&self) -> Result<()> {
         log::debug!("Removing old subscription");
+        let token = self.fitbit_auth.token(&["weight"]).await?;
         let client = reqwest::Client::new();
         client
             .delete(&format!(
                 "https://api.fitbit.com/1/user/-/body/apiSubscriptions/{}.json",
-                &self.uid
+                self.uid()
             ))
-            .bearer_auth(&self.fitbit_access_token)
+            .bearer_auth(token.secret())
             .send()
             .await
             .context("fitbit delete subscribe")?;
@@ -355,9 +194,9 @@ impl User {
         client
             .post(&format!(
                 "https://api.fitbit.com/1/user/-/body/apiSubscriptions/{}.json",
-                &self.uid
+                self.uid()
             ))
-            .bearer_auth(&self.fitbit_access_token)
+            .bearer_auth(token.secret())
             .form(&[("subscriberId", "1")])
             .send()
             .await
@@ -369,9 +208,10 @@ impl User {
 
     async fn get_profile(&self) -> Result<fitbit::user::profile::User> {
         log::debug!("Getting user profile");
+        let token = self.fitbit_auth.token(&["profile".to_string()]).await?;
         let client = reqwest::Client::new();
         let profile: fitbit::user::profile::Response = client.get(fitbit::user::profile::url(fitbit::UserId::Current))
-            .bearer_auth(&self.fitbit_access_token)
+            .bearer_auth(token.secret())
             .send()
             .await
             .context("fitbit get profile")?
@@ -384,6 +224,7 @@ impl User {
 
     async fn get_weight_log(&self, min: NaiveDate, max: NaiveDate) -> Result<Vec<fitbit::body::log::weight::WeightLog>> {
         log::debug!("Getting weight log");
+        let token = self.fitbit_auth.token(&["weight".to_string()]).await?;
         let client = reqwest::Client::new();
         let resp: fitbit::body::log::weight::GetResponse = client.get(
             fitbit::body::log::url_from_date_range(
@@ -393,7 +234,7 @@ impl User {
                 max,
             )
         )
-            .bearer_auth(&self.fitbit_access_token)
+            .bearer_auth(token.secret())
             .send()
             .await
             .context("fitbit get weight")?

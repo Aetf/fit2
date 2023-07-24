@@ -1,6 +1,4 @@
 use chrono::NaiveDate;
-use chrono::naive::MAX_DATE;
-use std::time::Duration;
 use chrono::Duration as OldDuration;
 use std::iter::FusedIterator;
 use std::ops::{Range, RangeInclusive};
@@ -8,7 +6,7 @@ use crate::utils::date_range_chunks::DateRangeChunks;
 
 mod date_range_chunks {
     use super::*;
-    use std::ops::{RangeBounds, Bound, Range};
+    use std::ops::Range;
     use std::cmp;
     use std::convert::TryInto;
 

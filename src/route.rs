@@ -2,6 +2,7 @@
 use routerify::prelude::*;
 use routerify::{Middleware, RequestInfo, Router};
 use hyper::body::to_bytes;
+use futures::lock::Mutex;
 
 use crate::adaptor::{http, prelude::*, Body, Request, Response};
 use crate::core::Fit2;
@@ -28,10 +29,10 @@ async fn setup_page(req: Request) -> Result<Response> {
 
 async fn connect_fitbit(req: Request) -> Result<Response> {
     let client = Fit2::from_env()?;
-    let url = if let Ok(_) = client.fitbit_ensure_setup().await {
-        format!("{}/setup", req.base_path())
-    } else {
-        client.fitbit_oauth_start().await?.to_string()
+    let url = match client.fitbit_ensure_setup().await {
+        Ok(_) => format!("{}/setup", req.base_path()),
+        Err(Error::AuthRedirect(redirect)) => redirect.url.to_string(),
+        Err(e) => return Err(e),
     };
     // redirect to fitbit authorize page
     Ok(http::Response::builder()
@@ -42,12 +43,12 @@ async fn connect_fitbit(req: Request) -> Result<Response> {
 
 async fn connect_google(req: Request) -> Result<Response> {
     let client = Fit2::from_env()?;
-    let url = if let Ok(_) = client.google_ensure_setup().await {
-        format!("{}/setup", req.base_path())
-    } else {
-        client.google_oauth_redirect().await?.to_string()
+    let url = match client.google_ensure_setup().await {
+        Ok(_) => format!("{}/setup", req.base_path()),
+        Err(Error::AuthRedirect(redirect)) => redirect.url.to_string(),
+        Err(e) => return Err(e),
     };
-    // redirect to fitbit authorize page
+    // redirect to google authorize page
     Ok(http::Response::builder()
         .status(http::StatusCode::SEE_OTHER)
         .header(http::header::LOCATION, url)
@@ -56,12 +57,14 @@ async fn connect_google(req: Request) -> Result<Response> {
 
 async fn oauth_callback_fitbit(req: Request) -> Result<Response> {
     let client = Fit2::from_env()?;
+    let user = client.ensure_user().await?;
 
     let csrf = req
         .query("state");
     let code = req.query("code");
     if let(Some(csrf), Some(code)) = (csrf, code) {
-        client.fitbit_oauth_exchange_token(csrf, code).await?;
+        let mut auth = user.fitbit_auth().lock().await;
+        auth.exchange_token(csrf, code).await?;
     }
     client.fitbit_ensure_setup().await?;
 
@@ -99,6 +102,15 @@ async fn fitbit_sub_notify(req: Request) -> Result<Response> {
         .status(status)
         .body(Body::empty())?)
 }
+
+struct Data(Mutex<Option<(Fit2, crate::core::User)>>);
+
+async fn client_user(req: Request) -> Result<Request> {
+    let data = req.data::<Data>().unwrap().0.lock().await;
+    let fit2 = Fit2::from_env()?;
+}
+
+async fn client_user_post()
 
 // A middleware which logs an http request.
 async fn logger(req: Request) -> Result<Request> {
@@ -146,6 +158,7 @@ pub fn router() -> Router<Body, Error> {
     // Here, "Middleware::pre" means we're adding a pre middleware which will be executed
     // before any route handlers.
     Router::builder()
+        .data(Data(None))
         .middleware(Middleware::pre(logger))
         .get("/setup", setup_page)
         .get("/api/auth/fitbit", connect_fitbit)
